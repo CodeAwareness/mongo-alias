@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "es2019",
+    "outDir": "dist",
+    "module": "commonJS",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "lib": ["es2020"],
+    "declaration": true,
+    "declarationMap": true,
+    "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true,
+    "inlineSourceMap": false,
+    "inlineSources": false,
+    "sourceMap": true,
+    "paths": {
+      "@/*": [ "src/*" ]
+    }
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "types": [ "node", "jest" ],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  }
+}

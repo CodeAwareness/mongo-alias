@@ -1,0 +1,68 @@
+{
+  "name": "mongo-alias",
+  "version": "1.0.0",
+  "description": "A lightweight aliasing layer on top of mongodb node driver",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:CodeAwareness/mongo-alias.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CodeAwareness/mongo-alias/issues"
+  },
+  "author": "Mark Vasile <codeawareness@gmail.com>",
+  "license": "Apache-2.0",
+  "keywords": [
+    "codeAwareness",
+    "mongodb",
+    "mongo-alias"
+  ],
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "main": "dist/mongo.service.js",
+  "types": "dist/mongo.service.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest -i --verbose",
+    "test:watch": "jest -i --watchAll --verbose",
+    "coverage": "jest -i --coverage",
+    "lint": "eslint \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\" --fix",
+    "lint:watch": "esw -w --color src/**/*.ts",
+    "prepublish": "tsc"
+  },
+  "peerDependencies": {
+    "mongodb": "*"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.36.1",
+    "@typescript-eslint/parser": "^5.36.1",
+    "@types/jest": "^29.0.0",
+    "dotenv": "^16.0.2",
+    "eslint": "^8.23.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-config-standard": "^17.0.0",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-jest": "^27.0.1",
+    "eslint-plugin-n": "^15.2.5",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-promise": "^6.0.1",
+    "eslint-plugin-security": "^1.5.0",
+    "eslint-plugin-standard": "^5.0.0",
+    "eslint-watch": "^8.0.0",
+    "jest": "^29.0.3",
+    "mongodb": "*",
+    "path": "^0.12.7",
+    "ts-jest": "^29.0.0",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.1.0",
+    "typescript": "^4.8.3",
+    "yup": "^0.32.11"
+  }
+}
