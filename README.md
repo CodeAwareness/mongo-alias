@@ -3,21 +3,22 @@ A lightweight aliasing layer on top of mongodb node driver.
 
 ## Rationale
 
-As most developers do, I've started this project after becoming really frustrated with mongoose. Now over 300 issues reported, but here are the main reasons I wanted to get this done:
+As most developers do, I've started this project after becoming really frustrated with an existing solution: mongoose. Mongoose repo is now at over 300 issues reported, but here are the main reasons I wanted to get this done:
 
-- breaking changes are not always documented, had to find on my own, for example, that aliases don't work automatically anymore, after upgrading from v5 to v6.
+- breaking changes are not always documented, I had to find on my own, for example, that aliases don't work automatically anymore, after upgrading from v5 to v6.
 - it has become incredibly easy to corrupt my data using mongoose; things like `deleteMany(filter)` actually deleting all data; things like `update(filter, cmd)` updating all documents, not just the ones in the filter, because the contributors have decided to go against MongoDB and apply commands to ALL documents when a field does not exist in the schema (mongo will apply to NONE).
 - it has become quite difficult to debug a mongoose project, mainly due to its model of overwriting every single mongo native command
 - you cannot make anything serious using mongoose without eventually calling native driver functions, which then makes me wonder why do we even want to use mongoose?
 - mongoose is a huge project, an empty project with `npm i mongoose` quickly arrives at 14 MB (out of which mongoDB is 9.5MB)
 - I am a strong believer in the "single responsibility" paradigm, "do one thing and do it well". You need data validation? Install a data validation library. You need aliased fields? Install an alias translator (this package). You need virtual fields? Install a virtual field provider. And so on.
-- And finally, and perhaps most importantly, MongoDB driver commands should have never been overridden in this way. It makes it a lot harder to keep mongoose in sync with MongoDB evolution, prevents the devs to use mongoDB as intended by 10gen, and creates a lot of confusion and mistrust towards this wonderful database system. (have you heard people complaining that mongoDB corrupted their data? It's most likely not MongoDB).
+- And finally, and perhaps most importantly, MongoDB driver commands should have never been overridden in this way. It makes it a lot harder to keep mongoose in sync with MongoDB evolution, prevents the devs from using mongoDB as intended by 10gen, and creates a lot of confusion and mistrust towards this wonderful database system. (have you heard people complaining that mongoDB corrupted their data? It's most likely not MongoDB).
 
 ## Features
 
 - direct logging of native mongo driver commands being sent to your database
 - full use of the native mongoClient and its native DB object, to use as you see fit
 - aliased fields (more about this below)
+- automatic handling of `createdAt` and `updatedAt` timestamp fields
 
 Note: this package adds 38kb to your project. Consequently, it does not provide any of the following features provided by mongoose:
 
@@ -35,7 +36,9 @@ However, you are now if full control over your database queries and commands, an
 
 This one is quite simple: data size.
 
-When we code, we'd like to work with nice long field names, but those get stored in the JSON structures as is, and when you run billions of records, your data size, and even query performance, become less and less ideal. Saving short keys in the database has been a good way to improve both these metrics, for a long time now, even though 10gen explains [here](https://www.mongodb.com/docs/manual/core/data-model-operations/#storage-optimization-for-small-documents) that this optimization is really beneficial only for small documents.
+When we code, we'd like to work with nice long field names, but those get stored in the JSON structures as is, and when you run billions of records, your data size becomes larger and larger. For some simple documents, the choice of the schema keys can result in having more data storage allocated to these keys than to actual data. This is one of the shortcommings of working with NoSQL, but it's one that we can hammer down to a single letter using aliases.
+
+Saving short keys in the database has been a good way to improve database metrics, even though 10gen explains [here](https://www.mongodb.com/docs/manual/core/data-model-operations/#storage-optimization-for-small-documents) that this optimization is really beneficial only for small documents.
 
 ## Why NOT schema validation
 
@@ -62,7 +65,7 @@ import { initMongo } from 'mongo-alias'
 const data: TMongoAlias = await initMongo(config.mongo.url, config.mongo.db, options)
 
 // now you have data.mongoClient and data.db to work with
-const col = db.collection('users')
+const col = data.db.collection('users')
 const doc = await col.findOne(/* query, projection, options */)
 ```
 
@@ -154,9 +157,23 @@ const user2 = await userModel.updateOne({ 'repos.auth.user': 'Mark' }, { $push: 
 
 // OR matching entire objects
 const user3 = await userModel.findOne({ 'repos.auth': { user: 'Mark', date: new Date('2023-01-01') } })
+
+// OR (returning aliased results)
+const users = await userModel.find({ 'repos.auth.user': 'Mark' }).toArray()
+
+// OR (returning raw results)
+const users = await userModel.find({ 'repos.auth.user': 'Mark' }, {}, true).toArray()
 ```
 
 Note: advanced MongoDB functionality, such as aggregation pipelines won't work with aliases. For now.
+
+#### Retrieving raw mongoDB documents
+
+- to retrieve raw documents, not translated back into aliased fields, add a third parameter to the `findOne` or `find` query:
+
+```
+  const doc = await userModel.findOne({ _id: insertedId }, {}, true)
+```
 
 ## Express
 

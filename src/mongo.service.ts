@@ -177,7 +177,7 @@ const unalias = (query, schema) => {
     }
 
     /* TODO: somewhere we're getting an empty item in the array, which gets translated into a null */
-    if (parsed instanceof Array) parsed = parsed.filter(a => a)
+    if (parsed instanceof Array) parsed = parsed.filter(a => a !== undefined)
   })
 
   return parsed
