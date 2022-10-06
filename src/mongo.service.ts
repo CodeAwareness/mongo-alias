@@ -7,6 +7,7 @@ export interface Database {
   [col: string]: (a: string) => any
 }
 
+let logger = console
 let mongoClient
 let db: Database
 const listeners = []
@@ -26,7 +27,7 @@ function startLogger(client) {
     // TODO: allow developers to configure a list of ignored commands
     if (['createIndexes', 'listCollections', 'currentOp', 'drop'].includes(event.commandName)) return
     const cmd = event.command
-    console.debug(
+    logger.debug(
       `\x1b[93m MongoDB (${event.connectionId}, ${event.requestId}): \t`
       + '\x1b[94m'
       + `${event.commandName} `
@@ -40,8 +41,8 @@ function startLogger(client) {
       + '\x1b[0m',
     )
   })
-  // client.on('commandSucceeded', (event) => console.debug(`\x1b[93m mongoDB (cid, rid): (${event.connectionId}, ${event.requestId}) \x1b[0m`));
-  client.on('commandFailed', (event) => console.debug(`\x1b[95m mongoDB failed (cid, rid): (${event.connectionId}, ${event.requestId}) ${event.codeName} \x1b[0m`))
+  // client.on('commandSucceeded', (event) => logger.debug(`\x1b[93m mongoDB (cid, rid): (${event.connectionId}, ${event.requestId}) \x1b[0m`));
+  client.on('commandFailed', (event) => logger.debug(`\x1b[95m mongoDB failed (cid, rid): (${event.connectionId}, ${event.requestId}) ${event.codeName} \x1b[0m`))
 }
 
 export type TMongoAlias = {
@@ -56,11 +57,12 @@ export type TMongoAlias = {
  * @param string Database name
  * @param Object Options to be sent directly to the MongoDB node driver; We use `{ monitorCommands: true }` to enable logging (see setupTestDB.ts)
  */
-export async function initMongo(uri, dbName, options?: any): Promise<TMongoAlias> {
+export async function initMongo(uri, dbName, options?: any, customLogger?: any): Promise<TMongoAlias> {
+  if (customLogger) logger = customLogger
   mongoClient = new MongoClient(uri, options)
   startLogger(mongoClient)
   db = await mongoClient.db(dbName)
-  console.log('\x1b[36m MongoDB connected: \x1b[0m', dbName, uri, options)
+  logger.log('\x1b[36m MongoDB connected: \x1b[0m', dbName, uri, options)
   listeners.forEach(l => l(db))
   return { mongoClient, db }
 }
@@ -249,32 +251,32 @@ export function Model(schema: any, collection, options?: TOptions) {
   return {
     countDocuments: function(filter?: any, options?: any) {
       const mongoFilter = unalias(filter, schema)
-      if (debug) console.log('COUNT', '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('COUNT', '\x1b[33m', mongoFilter, '\x1b[0m')
       return col.countDocuments(mongoFilter, options)
     },
 
     deleteOne: function(filter, options?: any) {
       const mongoFilter = unalias(filter, schema)
-      if (debug) console.log('DELETE ONE', '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('DELETE ONE', '\x1b[33m', mongoFilter, '\x1b[0m')
       return col.deleteOne(mongoFilter, options)
     },
 
     deleteMany: function(filter, options?: any) {
       const mongoFilter = unalias(filter, schema)
-      if (debug) console.log('DELETE MANY', '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('DELETE MANY', '\x1b[33m', mongoFilter, '\x1b[0m')
       return col.deleteMany(mongoFilter, options)
     },
 
     find: function(filter?: any, options?: any, raw?: boolean) {
       const mongoFilter = unalias(filter, schema)
-      if (debug) console.log('FIND', '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('FIND', '\x1b[33m', mongoFilter, '\x1b[0m')
       const cPromise = col.find(mongoFilter, options)
       return raw ? cPromise : wrapArray(cPromise)
     },
 
     findOne: function(filter?: any, options?: any, raw?: boolean) {
       const mongoFilter = unalias(filter, schema)
-      if (debug) console.log('FIND ONE', debug, '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('FIND ONE', debug, '\x1b[33m', mongoFilter, '\x1b[0m')
       const docPromise = col.findOne(mongoFilter, options)
       return raw ? docPromise : docPromise.then(formatResult(schema))
     },
@@ -286,16 +288,16 @@ export function Model(schema: any, collection, options?: TOptions) {
     insertOne: function(obj, options?: any) {
       const mongoFilter = unalias(obj, schema)
       mongoFilter._c = new Date()
-      if (debug) console.log('INSERT ONE', obj, '\x1b[33m', mongoFilter, '\x1b[0m')
+      if (debug) logger.log('INSERT ONE', obj, '\x1b[33m', mongoFilter, '\x1b[0m')
       return col.insertOne(mongoFilter, options)
     },
 
     insertMany: function(objArray, options?: any) {
       const mongoFilter = objArray.map(obj => unalias(obj, schema))
       mongoFilter.map(obj => (obj._c = new Date()))
-      if (debug) console.log('INSERT MANY', '\x1b[33m')
-      if (debug) console.dir(mongoFilter, { depth: null })
-      if (debug) console.log('\x1b[0m')
+      if (debug) logger.log('INSERT MANY', '\x1b[33m')
+      if (debug) logger.dir(mongoFilter, { depth: null })
+      if (debug) logger.log('\x1b[0m')
       return col.insertMany(mongoFilter, options)
     },
 
@@ -303,7 +305,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoFilter = unalias(filter, schema)
       const mongoUpdate = unalias(update, schema)
       mongoUpdate._u = new Date()
-      if (debug) console.log('REPLACE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
+      if (debug) logger.log('REPLACE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return col.replaceOne(mongoFilter, mongoUpdate, options)
     },
 
@@ -312,7 +314,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoUpdate = unalias(update, schema)
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
-      if (debug) console.log('UPDATE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
+      if (debug) logger.log('UPDATE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return col.updateOne(mongoFilter, mongoUpdate, options)
     },
 
@@ -321,7 +323,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoUpdate = unalias(update, schema)
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
-      if (debug) console.log('UPDATE MANY', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
+      if (debug) logger.log('UPDATE MANY', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return col.updateMany(mongoFilter, mongoUpdate, options)
     },
   }

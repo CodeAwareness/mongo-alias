@@ -3,7 +3,7 @@ A lightweight aliasing layer on top of mongodb node driver.
 
 ## Rationale
 
-As most developers do, I've started this project after becoming really frustrated with an existing solution: mongoose. Mongoose repo is now at over 300 issues reported, but here are the main reasons I wanted to get this done:
+As most developers do, I've started this project after becoming really frustrated with an existing solution: mongoose. Mongoose repo is now at over 300 issues reported, many of them go stale and unresolved. That aside, here are the main reasons I wanted to get away from Mongoose:
 
 - breaking changes are not always documented, I had to find on my own, for example, that aliases don't work automatically anymore, after upgrading from v5 to v6.
 - it has become incredibly easy to corrupt my data using mongoose; things like `deleteMany(filter)` actually deleting all data; things like `update(filter, cmd)` updating all documents, not just the ones in the filter, because the contributors have decided to go against MongoDB and apply commands to ALL documents when a field does not exist in the schema (mongo will apply to NONE).
@@ -20,7 +20,7 @@ As most developers do, I've started this project after becoming really frustrate
 - aliased fields (more about this below)
 - automatic handling of `createdAt` and `updatedAt` timestamp fields
 
-Note: this package adds 38kb to your project. Consequently, it does not provide any of the following features provided by mongoose:
+Note: this package adds 42kb to your project. Consequently, it does NOT provide any of the following features provided by mongoose:
 
   - schema validation
   - discriminators
