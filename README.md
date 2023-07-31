@@ -6,7 +6,6 @@ A lightweight aliasing layer on top of mongodb node driver.
 As most developers do, I've started this project after becoming really frustrated with an existing solution: mongoose. Mongoose repo is now at over 300 issues reported, many of them go stale and unresolved. That aside, here are the main reasons I wanted to get away from Mongoose:
 
 - breaking changes are not always documented, I had to find on my own, for example, that aliases don't work automatically anymore, after upgrading from v5 to v6.
-- it has become incredibly easy to corrupt my data using mongoose; things like `deleteMany(filter)` actually deleting all data; things like `update(filter, cmd)` updating all documents, not just the ones in the filter, because the contributors have decided to go against MongoDB and apply commands to ALL documents when a field does not exist in the schema (mongo will apply to NONE).
 - it has become quite difficult to debug a mongoose project, mainly due to its model of overwriting every single mongo native command
 - you cannot make anything serious using mongoose without eventually calling native driver functions, which then makes me wonder why do we even want to use mongoose?
 - mongoose is a huge project, an empty project with `npm i mongoose` quickly arrives at 14 MB (out of which mongoDB is 9.5MB)
@@ -29,6 +28,7 @@ Note: this package adds 42kb to your project. Consequently, it does NOT provide 
   - transactions
   - virtual fields
   - command buffering (this is actually a benefit not to have)
+  - other ODM related features
 
 However, you are now if full control over your database queries and commands, and free to upgrade your mongoDB version anytime.
 
