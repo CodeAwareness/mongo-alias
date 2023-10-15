@@ -326,6 +326,32 @@ export function Model(schema: any, collection, options?: TOptions) {
       if (debug) logger.log('UPDATE MANY', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return col.updateMany(mongoFilter, mongoUpdate, options)
     },
+
+    findOneAndUpdate: function(filter: any, update: any, options?: any) {
+      const mongoFilter = unalias(filter, schema)
+      const mongoUpdate = unalias(update, schema)
+      if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
+      else mongoUpdate.$set = { _u: new Date() }
+      if (debug) logger.log('FIND ONE AND UPDATE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
+      return col.findOneAndUpdate(mongoFilter, mongoUpdate, options)
+    },
+
+    findOneAndReplace: function(filter: any, update: any, options?: any) {
+      const mongoFilter = unalias(filter, schema)
+      const mongoUpdate = unalias(update, schema)
+      if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
+      else mongoUpdate.$set = { _u: new Date() }
+      if (debug) logger.log('FIND ONE AND REPLACE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
+      return col.findOneAndReplace(mongoFilter, mongoUpdate, options)
+    },
+
+    // TODO: findAndModify
+
+    findOneAndDelete: function(filter: any, options?: any) {
+      const mongoFilter = unalias(filter, schema)
+      if (debug) logger.log('FIND ONE AND DELETE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', options || '', '\x1b[0m')
+      return col.findOneAndDelete(mongoFilter, options)
+    },
   }
 }
 
