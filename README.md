@@ -19,6 +19,8 @@ As most developers do, I've started this project after becoming really frustrate
 - aliased fields (more about this below)
 - automatic handling of `createdAt` and `updatedAt` timestamp fields
 
+Note: this package only implements aliasing to the most commonly used methods of collection. For methods not implemented, you'll be using the native mongoDB node driver function. If you really need it, please submit a pull request with additional functions that implements aliasing, such as `findOneAndReplace`, `estimateDocumentCount`, etc. Perhaps the `aggregate` function is the most difficult to implement with any guarantee, so I would welcome any assistance there.
+
 Note: this package adds 42kb to your project. Consequently, it does NOT provide any of the following features provided by mongoose:
 
   - schema validation

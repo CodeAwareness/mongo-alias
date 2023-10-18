@@ -216,6 +216,20 @@ type TOptions = {
   debug: boolean
 }
 
+const getMethods = obj => {
+  let properties = new Set()
+  let currentObj = obj
+  do {
+    Object
+      .getOwnPropertyNames(currentObj)
+      .map(item => properties.add(item))
+  } while (
+    (currentObj = Object.getPrototypeOf(currentObj))
+  )
+
+  return [...properties.keys()].filter((item: string) => typeof obj[item] === 'function')
+}
+
 /**
  * Model - create a lightweight layer on top of mongodb
  *
@@ -235,6 +249,15 @@ export function Model(schema: any, collection, options?: TOptions) {
 
   listeners.push(db => {
     col = db.collection(collection)
+    const na = []
+    getMethods(col)
+      .map((k: string) => {
+        if (!mAliased[k]) {
+          na.push(k)
+          mAliased[k] = col[k].bind(col)
+        }
+      })
+    console.log(`Model: ${collection} - adding non-aliased methods: `, na.join(', '))
     delayed.forEach(l => l(col))
   })
 
@@ -248,7 +271,7 @@ export function Model(schema: any, collection, options?: TOptions) {
   }
 
   /* TODO: add more native mongoDB functions here */
-  return {
+  const mAliased = {
     countDocuments: function(filter?: any, options?: any) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('COUNT', '\x1b[33m', mongoFilter, '\x1b[0m')
@@ -327,6 +350,8 @@ export function Model(schema: any, collection, options?: TOptions) {
       return col.updateMany(mongoFilter, mongoUpdate, options)
     },
   }
+
+  return mAliased
 }
 
 export type ICollection = ReturnType<typeof Model>
