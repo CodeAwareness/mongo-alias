@@ -197,6 +197,7 @@ const formatResult = root => {
   return res => {
     if (typeof res !== 'object') return res
     if (!res) return res
+    if (res instanceof ObjectId) return res
     if (!Object.keys(res).length) return res
     if (res instanceof Array) return res.map(formatResult(schema))
     const parsed = {}
