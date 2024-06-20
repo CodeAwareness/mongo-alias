@@ -258,7 +258,7 @@ export function Model(schema: any, collection, options?: TOptions) {
           mAliased[k] = col[k].bind(col)
         }
       })
-    console.log(`Model: ${collection} - adding non-aliased methods: `, na.join(', '))
+    // console.log(`Model: ${collection} - adding non-aliased methods: `, na.join(', '))
     delayed.forEach(l => l(col))
   })
 
