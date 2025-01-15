@@ -173,7 +173,7 @@ const unalias = (query, schema) => {
     parsed[newQuery] = isNaN(newQuery) ? item : unalias(item, schema[0])
 
     /* skip standard JS objects, but for user defined objects we advance deeper */
-    if (item instanceof Object && !(item instanceof Date) && !(item instanceof BigInt) && !(item instanceof ObjectId)) {
+    if (item instanceof Object && !(item instanceof Date) && !(item instanceof BigInt) && !(item instanceof ObjectId) && !((item instanceof Array) && (item.length === 0))) {
       parsed[newQuery] = unalias(item, pack.schema)
       return
     }

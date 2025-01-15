@@ -9,13 +9,11 @@ export function getDb() {
 }
 
 function checkOps() {
-  return new Promise(
-    (resolve, reject) => {
-      mongoClient.db('admin').command({ currentOp: 1, active: true }, (err, result) => {
-        if (err) reject(err)
-        const ops = result.inprog.filter(r => r.ns && !r.ns.includes('admin')).map(r => r.command)
-        resolve(ops.length)
-      })
+  return db.admin()
+    .command({ currentOp: 1 }).then(currentOperations => {
+      // Filter for indexing operations
+      const ops = currentOperations.inprog.filter(r => r.ns && !r.ns.includes('admin')).map(r => r.command)
+      return ops.length
     })
     .then(len => len ? new Promise((resolve, reject) => setTimeout(() => checkOps().then(resolve), 500)) : true)
 }

@@ -8,6 +8,7 @@ const envVarsSchema = Yup.object()
   .shape({
     NODE_ENV: Yup.string().oneOf(['production', 'development', 'test']).required(),
     MONGODB_URL: Yup.string().required(),
+    MONGODB_DB: Yup.string().required(),
   })
   .unknown()
 

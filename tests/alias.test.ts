@@ -16,15 +16,17 @@ const userRecord = {
       o: 'codeawareness.com/api',
       a: [
         { u: 'qwe123', d: dateObj },
-        { u: 'asd098' },
+        { u: 'asd098', d: dateObj },
       ],
+      f: [],
     },
     {
       n: 'codeAwareness LS',
       o: 'codeawareness.com/localservice',
       a: [
-        { u: 'random' },
+        { u: 'random', d: dateObj },
       ],
+      f: ['README.md'],
     },
   ]
 }
@@ -38,15 +40,17 @@ const userRecordAliased = {
       origin: 'codeawareness.com/api',
       auth: [
         { user: 'qwe123', d: dateObj },
-        { user: 'asd098' },
+        { user: 'asd098', d: dateObj },
       ],
+      files: [],
     },
     {
       name: 'codeAwareness LS',
       origin: 'codeawareness.com/localservice',
       auth: [
-        { user: 'random' },
+        { user: 'random', d: dateObj },
       ],
+      files: ['README.md'],
     },
   ]
 }
@@ -56,7 +60,7 @@ const simpleAliasModel = {
   e: { _alias: 'email' },
   d: { _alias: 'lastLogin' },
   u: { _alias: 'user' },
-  r: [{ a: {}, n: '', o: '' }],
+  r: [{ a: {}, n: '', o: '', f: [] }],
 }
 
 const hashMapModel = {
@@ -97,7 +101,8 @@ const nestedAliasModel = {
           u: { _alias: 'user' },
           d: { _alias: 'date' },
         }]
-      }
+      },
+      f: { _alias: 'files' },
     }]
   }
 }
@@ -111,7 +116,7 @@ const docModel = {
 const simpleClassModel = {
   n: { _alias: 'name' },
   u: { _alias: 'users', _children: [nestedAliasModel] },
-  d: { _alias: 'docs', _children: docModel }
+  d: { _alias: 'doc', _children: docModel }
 }
 
 const classRecord = {
@@ -461,5 +466,14 @@ describe('MongoDB service', () => {
       // Test
       await expect(cl.doc.title).toEqual('Code Awareness: Category Theory')
     })
+
+    test('should correctly update an empty array', async () => {
+      const classModel = await Model(simpleClassModel, 'classes')
+      await classModel.insertOne(classRecordAliased)
+      const cl = await classModel.findOne({ name: 'Category Theory' })
+      // Test
+      await expect(cl.users[0].repos[0].files).toEqual([])
+    })
+
   })
 })
