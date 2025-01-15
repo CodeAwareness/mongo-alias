@@ -1,6 +1,6 @@
 {
   "name": "mongo-alias",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A lightweight aliasing layer on top of mongodb node driver",
   "repository": {
     "type": "git",
