@@ -373,6 +373,19 @@ describe('MongoDB service', () => {
       )
     })
 
+    test('should correctly format a query for a model with array positional notation and $lt conditions and unaliased fields', async () => {
+      const userModel = await Model(nestedAliasModel, 'users')
+      // Test Positive scenario
+      const res = await userModel.findOne({ 'repos.1.auth.0.date': { $lt: new Date() } })
+      await expect(res).toEqual(
+        expect.objectContaining({ email: userRecordAliased.email })
+      )
+
+      // Test Negative scenario
+      const res2 = await userModel.findOne({ 'repos.1.auth.0.date': { $lt: new Date('2020-01-01') } })
+      await expect(res2).toEqual(null)
+    })
+
     test('should correctly format a query for a model with multiple deeply nested alias model, containing positional $ element and unaliased fields', async () => {
       const userModel = await Model(nestedAliasModel, 'users')
       const res = await userModel.updateOne({}, { $set: { 'repos.$[].auth.$[].marker': 'NEO' } })
