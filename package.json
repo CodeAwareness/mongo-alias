@@ -28,8 +28,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "jest -i --verbose",
-    "test:watch": "jest -i --watchAll --verbose",
+    "test": "jest -i --verbose --forceExit",
+    "test:watch": "jest -i --watchAll --verbose --forceExit",
     "coverage": "jest -i --coverage",
     "lint": "eslint \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\" --fix",
     "lint:watch": "esw -w --color src/**/*.ts",
