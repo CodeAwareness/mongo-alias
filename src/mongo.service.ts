@@ -16,7 +16,40 @@ const MAX_DEBUG_LEN = 2048
 /**
  * Utility functions
  */
-const stringify = (obj) => JSON.stringify(obj, null, '\t')
+const convertObjectIds = (obj) => {
+  if (obj instanceof ObjectId) {
+    return obj.toString()
+  }
+  if (obj instanceof Date || obj === null || obj === undefined) {
+    return obj
+  }
+  // Check for serialized ObjectId format {buffer: [...]} or BSON ObjectId
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    // Check if it's a serialized ObjectId (has buffer property with Uint8Array or array)
+    if (obj.buffer && (obj.buffer instanceof Uint8Array || Array.isArray(obj.buffer))) {
+      // Convert buffer to hex string
+      const buffer = Array.isArray(obj.buffer) ? obj.buffer : Array.from(obj.buffer)
+      return buffer.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+    // Check if it has toHexString method (BSON ObjectId)
+    if (typeof obj.toHexString === 'function') {
+      return obj.toHexString()
+    }
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(convertObjectIds)
+  }
+  if (typeof obj === 'object') {
+    const converted = {}
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertObjectIds(value)
+    }
+    return converted
+  }
+  return obj
+}
+
+const stringify = (obj) => JSON.stringify(convertObjectIds(obj), null, '\t')
 const sortReplacer = (key, value) => (value instanceof Map) ? [...value] : value
 
 /**
