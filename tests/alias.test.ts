@@ -489,4 +489,297 @@ describe('MongoDB service', () => {
     })
 
   })
+
+  describe('ObjectId operators', () => {
+    // Model with aliased fields that contain ObjectIds
+    const repoWithObjectIdModel = {
+      n: { _alias: 'name' },
+      o: { _alias: 'origin' },
+      a: {
+        _alias: 'auth',
+        _children: [{
+          u: { _alias: 'user' }, // ObjectId field (aliased)
+          r: { _alias: 'role' },
+        }]
+      },
+    }
+
+    beforeEach(async () => {
+      col = getDb().collection('repos')
+    })
+
+    afterEach(async () => {
+      await col.drop()
+    })
+
+    test('should handle $in operator with ObjectIds on aliased field', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+      const userId3 = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Repo 1', 
+        origin: 'github.com/test/repo1',
+        auth: [{ user: userId1, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 2', 
+        origin: 'github.com/test/repo2',
+        auth: [{ user: userId2, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 3', 
+        origin: 'github.com/test/repo3',
+        auth: [{ user: userId3, role: 'viewer' }]
+      })
+
+      const repos = await repoModel.find({ 'auth.user': { $in: [userId1, userId2] } }).toArray()
+      // Test
+      expect(repos.length).toBe(2)
+      expect(repos.map(r => r.name).sort()).toEqual(['Repo 1', 'Repo 2'])
+    })
+
+    test('should handle $nin operator with ObjectIds on aliased field', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+      const userId3 = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Repo 1', 
+        origin: 'github.com/test/repo1',
+        auth: [{ user: userId1, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 2', 
+        origin: 'github.com/test/repo2',
+        auth: [{ user: userId2, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 3', 
+        origin: 'github.com/test/repo3',
+        auth: [{ user: userId3, role: 'viewer' }]
+      })
+
+      const repos = await repoModel.find({ 'auth.user': { $nin: [userId1] } }).toArray()
+      // Test
+      expect(repos.length).toBe(2)
+      expect(repos.map(r => r.name).sort()).toEqual(['Repo 2', 'Repo 3'])
+    })
+
+    test('should handle $ne operator with ObjectId on aliased field', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Repo 1', 
+        origin: 'github.com/test/repo1',
+        auth: [{ user: userId1, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 2', 
+        origin: 'github.com/test/repo2',
+        auth: [{ user: userId2, role: 'viewer' }]
+      })
+
+      const repos = await repoModel.find({ 'auth.user': { $ne: userId1 } }).toArray()
+      // Test
+      expect(repos.length).toBe(1)
+      expect(repos[0].name).toEqual('Repo 2')
+    })
+
+    test('should auto-convert string IDs in $in operator on aliased field', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Repo 1', 
+        origin: 'github.com/test/repo1',
+        auth: [{ user: userId1, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'Repo 2', 
+        origin: 'github.com/test/repo2',
+        auth: [{ user: userId2, role: 'admin' }]
+      })
+
+      const repos = await repoModel.find({ 
+        'auth.user': { $in: [userId1.toString(), userId2.toString()] } 
+      }).toArray()
+      // Test
+      expect(repos.length).toBe(2)
+    })
+
+    test('should handle $pullAll with ObjectIds on aliased array field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' }, // array of ObjectIds (aliased)
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+      const userId3 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [userId1, userId2, userId3] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $pullAll: { collaborators: [userId1, userId2] } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(1)
+      expect(project.collaborators[0].toString()).toBe(userId3.toString())
+    })
+
+    test('should handle $pull with ObjectId on aliased field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' },
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [userId1, userId2] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $pull: { collaborators: userId1 } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(1)
+      expect(project.collaborators[0].toString()).toBe(userId2.toString())
+    })
+
+    test('should handle $pull with nested $in on aliased field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' },
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [userId1, userId2] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $pull: { collaborators: { $in: [userId1, userId2] } } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(0)
+    })
+
+    test('should handle $push with ObjectId on aliased field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' },
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $push: { collaborators: userId1 } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(1)
+      expect(project.collaborators[0].toString()).toBe(userId1.toString())
+    })
+
+    test('should handle $addToSet with ObjectId on aliased field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' },
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [userId1] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $addToSet: { collaborators: userId2 } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(2)
+    })
+
+    test('should handle $push with $each modifier on aliased field', async () => {
+      const modelWithArray = {
+        n: { _alias: 'name' },
+        c: { _alias: 'collaborators' },
+      }
+      const Model1 = await Model(modelWithArray, 'repos')
+      const userId1 = new ObjectId()
+      const userId2 = new ObjectId()
+
+      await Model1.insertOne({ 
+        name: 'Project 1', 
+        collaborators: [] 
+      })
+
+      await Model1.updateOne(
+        { name: 'Project 1' },
+        { $push: { collaborators: { $each: [userId1, userId2] } } }
+      )
+
+      const project = await Model1.findOne({ name: 'Project 1' })
+      // Test
+      expect(project.collaborators.length).toBe(2)
+    })
+
+    test('should handle $gt/$lt with ObjectIds on aliased field (timestamp comparison)', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const oldUserId = new ObjectId('507f1f77bcf86cd799439011')
+      const newUserId = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Old Repo',
+        origin: 'github.com/test/old',
+        auth: [{ user: oldUserId, role: 'admin' }]
+      })
+      await repoModel.insertOne({ 
+        name: 'New Repo',
+        origin: 'github.com/test/new',
+        auth: [{ user: newUserId, role: 'admin' }]
+      })
+
+      const newerRepos = await repoModel.find({ 'auth.user': { $gt: oldUserId } }).toArray()
+      // Test
+      expect(newerRepos.length).toBe(1)
+      expect(newerRepos[0].name).toBe('New Repo')
+    })
+  })
 })

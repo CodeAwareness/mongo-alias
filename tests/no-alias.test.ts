@@ -175,4 +175,228 @@ describe('MongoDB service', () => {
       await expect(cl.d.t).toEqual('Code Awareness: mongodb light')
     })
   })
+
+  describe('ObjectId operators (no aliases)', () => {
+    const friendsModel = {
+      n: String,
+      f: Array, // array of ObjectIds
+    }
+
+    beforeEach(async () => {
+      col = getDb().collection('friends')
+    })
+
+    afterEach(async () => {
+      await col.drop()
+    })
+
+    test('should handle $in operator with ObjectIds', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ _id: id1, n: 'User 1' })
+      await friendModel.insertOne({ _id: id2, n: 'User 2' })
+      await friendModel.insertOne({ _id: id3, n: 'User 3' })
+
+      const users = await friendModel.find({ _id: { $in: [id1, id2] } }).toArray()
+      // Test
+      expect(users.length).toBe(2)
+      expect(users.map(u => u.n).sort()).toEqual(['User 1', 'User 2'])
+    })
+
+    test('should handle $nin operator with ObjectIds', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ _id: id1, n: 'User 1' })
+      await friendModel.insertOne({ _id: id2, n: 'User 2' })
+      await friendModel.insertOne({ _id: id3, n: 'User 3' })
+
+      const users = await friendModel.find({ _id: { $nin: [id1] } }).toArray()
+      // Test
+      expect(users.length).toBe(2)
+      expect(users.map(u => u.n).sort()).toEqual(['User 2', 'User 3'])
+    })
+
+    test('should handle $ne operator with ObjectId', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+
+      await friendModel.insertOne({ _id: id1, n: 'User 1' })
+      await friendModel.insertOne({ _id: id2, n: 'User 2' })
+
+      const users = await friendModel.find({ _id: { $ne: id1 } }).toArray()
+      // Test
+      expect(users.length).toBe(1)
+      expect(users[0].n).toEqual('User 2')
+    })
+
+    test('should auto-convert string IDs in $in operator', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+
+      await friendModel.insertOne({ _id: id1, n: 'User 1' })
+      await friendModel.insertOne({ _id: id2, n: 'User 2' })
+
+      const users = await friendModel.find({ 
+        _id: { $in: [id1.toString(), id2.toString()] } 
+      }).toArray()
+      // Test
+      expect(users.length).toBe(2)
+    })
+
+    test('should handle $pullAll with ObjectIds', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [id2, id3] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $pullAll: { f: [id2] } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(1)
+      expect(user.f[0].toString()).toBe(id3.toString())
+    })
+
+    test('should handle $pull with ObjectId', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [id2, id3] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $pull: { f: id2 } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(1)
+      expect(user.f[0].toString()).toBe(id3.toString())
+    })
+
+    test('should handle $pull with nested $in', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [id2, id3] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $pull: { f: { $in: [id2, id3] } } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(0)
+    })
+
+    test('should handle $push with ObjectId', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $push: { f: id2 } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(1)
+      expect(user.f[0].toString()).toBe(id2.toString())
+    })
+
+    test('should handle $addToSet with ObjectId', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [id2] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $addToSet: { f: id3 } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(2)
+    })
+
+    test('should handle $push with $each modifier', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const id1 = new ObjectId()
+      const id2 = new ObjectId()
+      const id3 = new ObjectId()
+
+      await friendModel.insertOne({ 
+        _id: id1, 
+        n: 'User 1', 
+        f: [] 
+      })
+
+      await friendModel.updateOne(
+        { _id: id1 },
+        { $push: { f: { $each: [id2, id3] } } }
+      )
+
+      const user = await friendModel.findOne({ _id: id1 })
+      // Test
+      expect(user.f.length).toBe(2)
+    })
+
+    test('should handle $gt/$lt with ObjectIds (timestamp comparison)', async () => {
+      const friendModel = Model(friendsModel, 'friends')
+      const oldId = new ObjectId('507f1f77bcf86cd799439011')
+      const newId = new ObjectId()
+
+      await friendModel.insertOne({ _id: oldId, n: 'Old User' })
+      await friendModel.insertOne({ _id: newId, n: 'New User' })
+
+      const newerUsers = await friendModel.find({ _id: { $gt: oldId } }).toArray()
+      // Test
+      expect(newerUsers.length).toBe(1)
+      expect(newerUsers[0].n).toBe('New User')
+    })
+  })
 })

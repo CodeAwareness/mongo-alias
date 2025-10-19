@@ -182,14 +182,133 @@ const unalias = (query, schema) => {
   /* Convenience transformer of string into ObjectId for _id */
   if (query?._id && typeof query._id !== 'object') query._id = new ObjectId(query._id)
   
-  /* Handle $in operator with _id - ensure ObjectIds are preserved */
-  if (query?._id && query._id.$in && Array.isArray(query._id.$in)) {
-    // Ensure all items in $in array are ObjectIds or convert strings to ObjectIds
-    query._id.$in = query._id.$in.map(id => {
-      if (id instanceof ObjectId) return id
-      if (typeof id === 'string') return new ObjectId(id)
-      return id
+  /* Handle MongoDB operators with _id - ensure ObjectIds are preserved */
+  if (query?._id && typeof query._id === 'object') {
+    // Array operators: $in, $nin, $all
+    const arrayOps = ['$in', '$nin', '$all']
+    arrayOps.forEach(op => {
+      if (query._id[op] && Array.isArray(query._id[op])) {
+        query._id[op] = query._id[op].map(id => {
+          if (id instanceof ObjectId) return id
+          if (typeof id === 'string') return new ObjectId(id)
+          return id
+        })
+      }
     })
+    
+    // Single value operators: $ne, $gt, $gte, $lt, $lte
+    const singleOps = ['$ne', '$gt', '$gte', '$lt', '$lte']
+    singleOps.forEach(op => {
+      if (query._id[op] !== undefined) {
+        const val = query._id[op]
+        if (typeof val === 'string') {
+          query._id[op] = new ObjectId(val)
+        }
+        // If already ObjectId, keep as is
+      }
+    })
+  }
+
+  /* Helper function to convert ObjectId strings in arrays */
+  const convertObjectIdArray = (arr) => {
+    if (!Array.isArray(arr)) return arr
+    return arr.map(item => {
+      if (item instanceof ObjectId) return item
+      if (typeof item === 'string' && item.length === 24 && /^[0-9a-f]{24}$/i.test(item)) {
+        // Only convert if it looks like an ObjectId hex string
+        try {
+          return new ObjectId(item)
+        } catch (e) {
+          return item
+        }
+      }
+      return item
+    })
+  }
+
+  /* Handle update operators that may contain ObjectIds */
+  // $pullAll: removes all matching values from array
+  if (query.$pullAll && typeof query.$pullAll === 'object') {
+    Object.keys(query.$pullAll).forEach(field => {
+      if (Array.isArray(query.$pullAll[field])) {
+        query.$pullAll[field] = convertObjectIdArray(query.$pullAll[field])
+      }
+    })
+  }
+
+  // $pull: removes matching values (can have nested operators like $in)
+  if (query.$pull && typeof query.$pull === 'object') {
+    Object.keys(query.$pull).forEach(field => {
+      const val = query.$pull[field]
+      if (val instanceof ObjectId) {
+        // Already ObjectId, keep as is
+      } else if (typeof val === 'string') {
+        query.$pull[field] = new ObjectId(val)
+      } else if (typeof val === 'object' && val.$in && Array.isArray(val.$in)) {
+        val.$in = convertObjectIdArray(val.$in)
+      }
+    })
+  }
+
+  // $push and $addToSet: add values to array
+  const arrayUpdateOps = ['$push', '$addToSet']
+  arrayUpdateOps.forEach(op => {
+    if (query[op] && typeof query[op] === 'object') {
+      Object.keys(query[op]).forEach(field => {
+        const val = query[op][field]
+        if (typeof val === 'string' && val.length === 24 && /^[0-9a-f]{24}$/i.test(val)) {
+          try {
+            query[op][field] = new ObjectId(val)
+          } catch (e) {
+            // Keep as string if conversion fails
+          }
+        }
+        // Handle $each modifier
+        if (val && typeof val === 'object' && val.$each && Array.isArray(val.$each)) {
+          val.$each = convertObjectIdArray(val.$each)
+        }
+      })
+    }
+  })
+
+  /* Helper to convert ObjectId operators in any field */
+  const convertOperatorObjectIds = (value) => {
+    if (!value || typeof value !== 'object') return value
+    
+    // Handle array operators: $in, $nin, $all
+    const arrayOps = ['$in', '$nin', '$all']
+    arrayOps.forEach(op => {
+      if (value[op] && Array.isArray(value[op])) {
+        value[op] = value[op].map(id => {
+          if (id instanceof ObjectId) return id
+          if (typeof id === 'string' && id.length === 24 && /^[0-9a-f]{24}$/i.test(id)) {
+            try {
+              return new ObjectId(id)
+            } catch (e) {
+              return id
+            }
+          }
+          return id
+        })
+      }
+    })
+    
+    // Handle single value operators: $ne, $gt, $gte, $lt, $lte
+    const singleOps = ['$ne', '$gt', '$gte', '$lt', '$lte']
+    singleOps.forEach(op => {
+      if (value[op] !== undefined) {
+        const val = value[op]
+        if (typeof val === 'string' && val.length === 24 && /^[0-9a-f]{24}$/i.test(val)) {
+          try {
+            value[op] = new ObjectId(val)
+          } catch (e) {
+            // Keep as string if conversion fails
+          }
+        }
+      }
+    })
+    
+    return value
   }
 
   /*
@@ -201,7 +320,14 @@ const unalias = (query, schema) => {
    */
   Object.entries(query).forEach(kvpair => {
     const parts = kvpair[0].split('.') // handle dot notation in the query, such as `repo.auth.user`
-    const item = kvpair[1] // query value associated to our key (in the example above `repo.auth.user`)
+    let item = kvpair[1] // query value associated to our key (in the example above `repo.auth.user`)
+    
+    // Convert ObjectId operators for this field
+    if (item && typeof item === 'object' && !Array.isArray(item) && !(item instanceof Date) && !(item instanceof ObjectId)) {
+      item = convertOperatorObjectIds(item)
+      query[kvpair[0]] = item  // Update the query with converted values
+    }
+    
     const pack = parts.reduce(replace, { schema, query: [] })
     const newQuery = pack.query.join('.')
 
