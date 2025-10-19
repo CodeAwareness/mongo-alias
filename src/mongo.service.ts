@@ -181,6 +181,16 @@ const unalias = (query, schema) => {
 
   /* Convenience transformer of string into ObjectId for _id */
   if (query?._id && typeof query._id !== 'object') query._id = new ObjectId(query._id)
+  
+  /* Handle $in operator with _id - ensure ObjectIds are preserved */
+  if (query?._id && query._id.$in && Array.isArray(query._id.$in)) {
+    // Ensure all items in $in array are ObjectIds or convert strings to ObjectIds
+    query._id.$in = query._id.$in.map(id => {
+      if (id instanceof ObjectId) return id
+      if (typeof id === 'string') return new ObjectId(id)
+      return id
+    })
+  }
 
   /*
    * Going over all key:value pairs of the query, we could get shapes like { repos: [{ name: 'test' }] } and { `repos.name`: 'test' }
