@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb'
-import { Model } from '@/mongo.service'
+import { Model, unalias } from '@/mongo.service'
 
 import setupTestDB, { getDb } from './utils/setupTestDB'
 
@@ -502,6 +502,13 @@ describe('MongoDB service', () => {
           r: { _alias: 'role' },
         }]
       },
+      c: { // common SHA
+        _alias: 'cSHA',
+        _children: [{
+          c: { _alias: 'cluster', _children: [ObjectId] },
+          h: { _alias: 'sha' }
+        }]
+      },
     }
 
     beforeEach(async () => {
@@ -510,6 +517,71 @@ describe('MongoDB service', () => {
 
     afterEach(async () => {
       await col.drop()
+    })
+
+    test.only('should handle ObjectId as value in unalias function', async () => {
+      const rid = new ObjectId('68f6f013057c81362c9fe4ba')
+      const uid = new ObjectId('67bc32edcf9b5efe459008ca')
+      const cSHA = [{ sha: '123', cluster: [uid, rid] }]
+
+			const repoSchema = {
+				o: { _alias: 'origin' },
+				pp: { _alias: 'platform' },
+				ip: { _alias: 'isPublic' },
+				c: { // common SHA
+					_alias: 'cSHA',
+					_children: [{
+						c: { _alias: 'cluster', _children: [ObjectId] },
+						hds: {
+							_alias: 'heads',
+							_children: [{
+								n: { _alias: 'name' },
+								h: { _alias: 'sha' },
+								u: { _alias: 'user' },
+							}],
+						},
+						h: { _alias: 'sha' },
+						sd: { _alias: 'shaDate' },
+						cd: { _alias: 'clusterDate' }, // this is the date at which the common SHA was calculated, NOT the date of the commit itself
+					}],
+				},
+				s: { // this is the sha value used in swarm authentication
+					_alias: 'swarm',
+					_children: [{ // we need several values here to prevent race conditions when one user updates swarm while another validates their own SHA value
+						h: { _alias: 'sha' }, // latest SHA in the remote
+						b: { _alias: 'branch' }, // corresponding branch in the remote for that SHA
+						d: { _alias: 'shaDate' }, // commit date for that SHA
+						u: { _alias: 'uploaded' }, // upload date (when the SHA got published to Code Awareness)
+					}],
+				},
+				a: {
+					// authorized user list
+					_alias: 'auth',
+					_children: [{
+						d: { _alias: 'lastAuthorized' }, // date last authorized
+						u: { _alias: 'user' }, // user id
+						e: { _alias: 'expiration' }, // TODO: expiration date, after which the user will be removed from this repo (we should be using this to have different expiration policies, per client)
+						r: { _alias: 'refresh' }, // user is asked to perform a diff refresh
+						h: {
+							_alias: 'head',
+							_children: {
+								h: { _alias: 'sha' },
+								b: { _alias: 'branch' },
+							}
+						}, // the current HEAD this user is working on
+					}],
+				},
+				ls: { _alias: 'lastSync' },
+				se: { _alias: 'syncEnabled' },
+				ru: { _alias: 'remoteUpdatedAt' },
+			}
+      const repoModel = await Model(repoSchema, 'repos')
+			await repoModel.insertOne({ _id: rid, o: 'react' })
+			await repoModel.updateOne({ _id: rid  }, { $set: { cSHA } })
+
+      const repoAfter = await repoModel.findOne()
+
+      expect(repoAfter.cSHA).toEqual(cSHA)
     })
 
     test('should handle $in operator with ObjectIds on aliased field', async () => {
@@ -590,7 +662,7 @@ describe('MongoDB service', () => {
       expect(repos[0].name).toEqual('Repo 2')
     })
 
-    test('should auto-convert string IDs in $in operator on aliased field', async () => {
+    test('should NOT auto-convert string IDs in $in operator on aliased field', async () => {
       const repoModel = await Model(repoWithObjectIdModel, 'repos')
       const userId1 = new ObjectId()
       const userId2 = new ObjectId()
@@ -606,10 +678,14 @@ describe('MongoDB service', () => {
         auth: [{ user: userId2, role: 'admin' }]
       })
 
-      const repos = await repoModel.find({ 
+      let repos = await repoModel.find({
         'auth.user': { $in: [userId1.toString(), userId2.toString()] } 
       }).toArray()
-      // Test
+      expect(repos.length).toBe(0)
+
+      repos = await repoModel.find({
+        'auth.user': { $in: [userId1, userId2] }
+      }).toArray()
       expect(repos.length).toBe(2)
     })
 
@@ -780,6 +856,44 @@ describe('MongoDB service', () => {
       // Test
       expect(newerRepos.length).toBe(1)
       expect(newerRepos[0].name).toBe('New Repo')
+    })
+
+    test('should handle $set with array of nested ObjectIds on aliased field', async () => {
+      const repoModel = await Model(repoWithObjectIdModel, 'repos')
+      const objIdA = new ObjectId()
+      const objIdB = new ObjectId()
+      const userId1 = new ObjectId()
+
+      await repoModel.insertOne({ 
+        name: 'Repo 1',
+        origin: 'github.com/test/repo1',
+        auth: [{ user: userId1, role: 'admin' }],
+        cSHA: []
+      })
+
+      await repoModel.updateOne(
+        { name: 'Repo 1' },
+        { $set: { cSHA: [{ cluster: [objIdA, objIdB], sha: 'abc123' }] } }
+      )
+
+      const repo = await repoModel.findOne({ name: 'Repo 1' })
+      // Test that the field was updated
+      expect(repo.cSHA).toBeDefined()
+      expect(repo.cSHA.length).toBe(1)
+      expect(repo.cSHA[0].cluster.length).toBe(2)
+      // Verify that the values are ObjectIds
+      expect(repo.cSHA[0].cluster[0]).toBeInstanceOf(ObjectId)
+      expect(repo.cSHA[0].cluster[1]).toBeInstanceOf(ObjectId)
+      expect(repo.cSHA[0].cluster[0].toString()).toBe(objIdA.toString())
+      expect(repo.cSHA[0].cluster[1].toString()).toBe(objIdB.toString())
+      expect(repo.cSHA[0].sha).toBe('abc123')
+
+      // Verify in raw database that the actual stored values are ObjectIds
+      const rawRepo = await col.findOne({ n: 'Repo 1' })
+      expect(rawRepo.c[0].c[0]).toBeInstanceOf(ObjectId)
+      expect(rawRepo.c[0].c[1]).toBeInstanceOf(ObjectId)
+      expect(rawRepo.c[0].c[0].toString()).toBe(objIdA.toString())
+      expect(rawRepo.c[0].c[1].toString()).toBe(objIdB.toString())
     })
   })
 })
