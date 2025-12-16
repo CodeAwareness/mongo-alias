@@ -180,7 +180,11 @@ export const unalias = (query, schema) => {
   if (!(query instanceof Object)) return query
 
   /* Convenience transformer of string into ObjectId for _id */
-  if (query?._id && typeof query._id !== 'object') query._id = new ObjectId(query._id)
+  try {
+    if (query?._id && typeof query._id !== 'object') query._id = new ObjectId(query._id)
+  } catch (err) {
+    console.log('FAILED UNALIAS FOR', query._id, query)
+  }
   
   /* Handle MongoDB operators with _id - ensure ObjectIds are preserved */
   if (query?._id && typeof query._id === 'object') {
