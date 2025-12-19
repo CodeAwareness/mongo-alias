@@ -2,7 +2,7 @@ import { initMongo } from '@/mongo.service'
 import config from '../config'
 import { setDebug as logDebug } from './logger'
 
-let mongoClient, db
+let mongoClient, db // TODO: find a better way to mock things
 
 export function getDb() {
   return db
