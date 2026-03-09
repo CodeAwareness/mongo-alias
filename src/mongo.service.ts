@@ -95,7 +95,7 @@ export async function initMongo(uri, dbName, options?: any, customLogger?: any):
   mongoClient = new MongoClient(uri, options)
   startLogger(mongoClient)
   db = await mongoClient.db(dbName)
-  logger.log('\x1b[36m MongoDB connected: \x1b[0m', dbName, uri, options)
+  logger.log('\x1b[36m MongoDB connected: \x1b[0m')
   listeners.forEach(l => l(db))
   return { mongoClient, db }
 }
