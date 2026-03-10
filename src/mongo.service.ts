@@ -93,7 +93,7 @@ export type TMongoAlias = {
 export async function initMongo(uri, dbName, options?: any, customLogger?: any): Promise<TMongoAlias> {
   if (customLogger) logger = customLogger
   mongoClient = new MongoClient(uri, options)
-  startLogger(mongoClient)
+  if (options?.monitorCommands) startLogger(mongoClient)
   db = await mongoClient.db(dbName)
   logger.log('\x1b[36m MongoDB connected: \x1b[0m')
   listeners.forEach(l => l(db))

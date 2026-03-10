@@ -52,7 +52,13 @@ Much like express and other web servers don't come up request/response validatio
 
 ## Test
 
-Make sure you install mongoDB server and have it run locally. Change the `tests/.env` file to suit your needs, then run:
+Make sure you install mongoDB server and have it run locally. Copy the example env file and adjust if needed:
+
+```
+cp tests/.env.example tests/.env
+```
+
+Then run:
 
 `npm run test:watch`
 

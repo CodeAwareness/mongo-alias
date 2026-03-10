@@ -2,7 +2,8 @@ import dotenv   from 'dotenv'
 import path     from 'path'
 import * as Yup from 'yup'
 
-dotenv.config({ path: path.join(__dirname, '.env') })
+dotenv.config({ path: path.join(__dirname, '.env.example') })
+dotenv.config({ path: path.join(__dirname, '.env'), override: true })
 
 const envVarsSchema = Yup.object()
   .shape({
