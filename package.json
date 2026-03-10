@@ -17,14 +17,13 @@
     "mongo-alias"
   ],
   "engines": {
-    "node": ">=12.0.0"
+    "node": ">=18.0.0"
   },
   "main": "dist/mongo.service.js",
   "types": "dist/mongo.service.d.ts",
   "files": [
     "dist",
-    "README.md",
-    "tsconfig.json"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -33,7 +32,7 @@
     "coverage": "jest -i --coverage",
     "lint": "eslint \"src/**/*.{js,ts}\" \"tests/**/*.{js,ts}\" --fix",
     "lint:watch": "esw -w --color src/**/*.ts",
-    "prepublish": "tsc"
+    "prepublishOnly": "tsc"
   },
   "peerDependencies": {
     "mongodb": "*"

@@ -519,7 +519,7 @@ describe('MongoDB service', () => {
       await col.drop()
     })
 
-    test.only('should handle ObjectId as value in unalias function', async () => {
+    test('should handle ObjectId as value in unalias function', async () => {
       const rid = new ObjectId('68f6f013057c81362c9fe4ba')
       const uid = new ObjectId('67bc32edcf9b5efe459008ca')
       const cSHA = [{ sha: '123', cluster: [uid, rid] }]
