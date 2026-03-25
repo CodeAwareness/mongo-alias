@@ -896,4 +896,63 @@ describe('MongoDB service', () => {
       expect(rawRepo.c[0].c[1].toString()).toBe(objIdB.toString())
     })
   })
+
+  describe('$or operator with aliases', () => {
+    afterEach(async () => {
+      const col = getDb().collection('repos')
+      await col.drop().catch(() => {})
+    })
+
+    test('should translate aliases inside $or array', async () => {
+      const repoModel = await Model({
+        o: { _alias: 'origin' },
+        ip: { _alias: 'isPublic' },
+        se: { _alias: 'syncEnabled' },
+        ls: { _alias: 'lastSync' },
+      }, 'repos')
+
+      // Insert a repo with lastSync in the past
+      const oldDate = new Date('2025-01-01')
+      await repoModel.insertOne({ origin: 'github.com:vuejs/core', isPublic: true, syncEnabled: true, lastSync: oldDate })
+
+      // Query with $or using aliased field names — this is the exact pattern from sync-queue.service.ts
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000)
+      const results = await repoModel.find({
+        isPublic: true,
+        syncEnabled: true,
+        $or: [
+          { lastSync: { $lt: cutoff } },
+          { lastSync: { $exists: false } },
+        ],
+      }).toArray()
+
+      expect(results.length).toBe(1)
+      expect(results[0].origin).toBe('github.com:vuejs/core')
+    })
+
+    test('should find repos with missing lastSync via $or', async () => {
+      const repoModel = await Model({
+        o: { _alias: 'origin' },
+        ip: { _alias: 'isPublic' },
+        se: { _alias: 'syncEnabled' },
+        ls: { _alias: 'lastSync' },
+      }, 'repos')
+
+      // Insert a repo WITHOUT lastSync
+      await repoModel.insertOne({ origin: 'github.com:test/repo', isPublic: true, syncEnabled: true })
+
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000)
+      const results = await repoModel.find({
+        isPublic: true,
+        syncEnabled: true,
+        $or: [
+          { lastSync: { $lt: cutoff } },
+          { lastSync: { $exists: false } },
+        ],
+      }).toArray()
+
+      expect(results.length).toBe(1)
+      expect(results[0].origin).toBe('github.com:test/repo')
+    })
+  })
 })
