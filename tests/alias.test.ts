@@ -954,5 +954,77 @@ describe('MongoDB service', () => {
       expect(results.length).toBe(1)
       expect(results[0].origin).toBe('github.com:test/repo')
     })
+
+    test('should translate aliased fields inside $or with no $exists escape hatch', async () => {
+      // The two tests above pass even if $or translation were broken, because their
+      // { lastSync: { $exists: false } } branch is always true when `lastSync` is
+      // stored under its alias `ls`. This test has no such escape hatch: only a
+      // correctly-translated `ls` comparison can select the right document.
+      const repoModel = await Model({
+        o: { _alias: 'origin' },
+        ls: { _alias: 'lastSync' },
+      }, 'repos')
+
+      await repoModel.insertOne({ origin: 'stale', lastSync: new Date('2025-01-01') })
+      await repoModel.insertOne({ origin: 'fresh', lastSync: new Date('2099-01-01') })
+
+      const cutoff = new Date('2025-06-01')
+      const results = await repoModel.find({
+        $or: [{ lastSync: { $lt: cutoff } }],
+      }).toArray()
+
+      expect(results.length).toBe(1)
+      expect(results[0].origin).toBe('stale')
+    })
+  })
+
+  describe('RegExp field values', () => {
+    afterEach(async () => {
+      const col = getDb().collection('users')
+      await col.drop().catch(() => {})
+    })
+
+    test('should match a bare RegExp on an aliased field', async () => {
+      // Regression: a bare RegExp value used to be recursed into by unalias and
+      // collapse to {} (because Object.entries(regex) is empty), translating
+      // { name: /vasile/i } to { n: {} } — which matches nothing.
+      const userModel = await Model({
+        n: { _alias: 'name' },
+        e: { _alias: 'email' },
+      }, 'users')
+
+      await userModel.insertOne({ name: 'Mark Vasile', email: 'mark@codeawareness.com' })
+      await userModel.insertOne({ name: 'Ada Lovelace', email: 'ada@example.com' })
+
+      const results = await userModel.find({ name: /vasile/i }).toArray()
+
+      expect(results.length).toBe(1)
+      expect(results[0].name).toBe('Mark Vasile')
+    })
+
+    test('should match a bare RegExp nested inside $or', async () => {
+      const userModel = await Model({
+        n: { _alias: 'name' },
+        e: { _alias: 'email' },
+      }, 'users')
+
+      await userModel.insertOne({ name: 'Mark Vasile', email: 'mark@codeawareness.com' })
+      await userModel.insertOne({ name: 'Ada Lovelace', email: 'ada@example.com' })
+
+      const results = await userModel.find({
+        $or: [{ name: /vasile/i }, { email: /nobody/i }],
+      }).toArray()
+
+      expect(results.length).toBe(1)
+      expect(results[0].name).toBe('Mark Vasile')
+    })
+
+    test('unalias preserves a RegExp value instead of collapsing it to {}', () => {
+      const schema = { n: { _alias: 'name' } }
+      const out = unalias({ name: /vasile/i }, schema)
+      expect(out.n).toBeInstanceOf(RegExp)
+      expect(out.n.source).toBe('vasile')
+      expect(out.n.flags).toBe('i')
+    })
   })
 })

@@ -174,7 +174,7 @@ const replace = (mongoPack, alias) => {
 export const unalias = (query, schema) => {
   let parsed = {}
   if (!query || !schema) return query
-  if ((query instanceof Date) || (query instanceof BigInt) || (query instanceof ObjectId)) {
+  if ((query instanceof Date) || (query instanceof BigInt) || (query instanceof ObjectId) || (query instanceof RegExp)) {
     return query
   }
   if (!(query instanceof Object)) return query
@@ -241,8 +241,10 @@ export const unalias = (query, schema) => {
 		if (!isNaN(newQuery) && !Object.keys(parsed).length) parsed = []
 		parsed[newQuery] = isNaN(newQuery) ? item : unalias(item, schema[0])
 
-    /* skip standard JS objects, but for user defined objects we advance deeper */
-    if (item instanceof Object && !(item instanceof Date) && !(item instanceof BigInt) && !(item instanceof ObjectId) && !((item instanceof Array) && (item.length === 0))) {
+    /* skip standard JS objects, but for user defined objects we advance deeper.
+     * RegExp is a leaf value (like Date/ObjectId): recursing into it would
+     * iterate its (empty) own-property list and collapse it to {}. */
+    if (item instanceof Object && !(item instanceof Date) && !(item instanceof BigInt) && !(item instanceof ObjectId) && !(item instanceof RegExp) && !((item instanceof Array) && (item.length === 0))) {
       parsed[newQuery] = unalias(item, pack.schema)
       return
     }
