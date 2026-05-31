@@ -10,7 +10,11 @@ export interface Database {
 let logger = console
 let mongoClient
 let db: Database
-const listeners = []
+// Keyed by collection name so re-registering a Model for the same collection
+// replaces its listener instead of appending — bounds the map and keeps
+// Model() idempotent. (Map.forEach passes the value first, so the existing
+// `listeners.forEach(l => l(db))` rebind calls work unchanged.)
+const listeners = new Map<string, (db: any) => void>()
 const MAX_DEBUG_LEN = 2048
 
 /**
@@ -117,7 +121,7 @@ export async function initMongo(uri, dbName, options?: any, customLogger?: any):
 }
 
 export async function closeMongo() {
-  listeners.length = 0
+  listeners.clear()
   mongoClient?.removeAllListeners()
   await mongoClient?.close()
   // Reset the client singleton so a subsequent initMongo() opens a fresh client
@@ -191,7 +195,25 @@ const replace = (mongoPack, alias) => {
  * TODO: maybe also consider bracket notation, e.g. findOne({ "changes['123qwe']['8b7f']": 12 }) ?
  * TODO: more unit testing, consider schema where some fields are not aliased, but deeper fields are.
  */
-export const unalias = (query, schema) => {
+/* Deep-clone a query/update so unalias never mutates the caller's object.
+ * ObjectId / Date / RegExp (and primitives, incl. bigint) are opaque leaves —
+ * returned as-is — so they survive cloning intact. structuredClone() would
+ * mangle ObjectId, so we hand-roll it. */
+const cloneQuery = (v) => {
+  if (v === null || typeof v !== 'object') return v
+  if (v instanceof ObjectId || v instanceof Date || v instanceof RegExp) return v
+  if (Array.isArray(v)) return v.map(cloneQuery)
+  const out = {}
+  for (const k of Object.keys(v)) out[k] = cloneQuery(v[k])
+  return out
+}
+
+/* A valid array index is a non-negative integer string ('0', '1', ...).
+ * isNaN() was wrong here: isNaN('') === false and isNaN('1.5') === false, so
+ * empty / decimal / whitespace keys were misread as array indexes. */
+const isArrayIndex = (key) => /^\d+$/.test(key)
+
+const unaliasInner = (query, schema) => {
   let parsed = {}
   if (!query || !schema) return query
   if ((query instanceof Date) || (query instanceof BigInt) || (query instanceof ObjectId) || (query instanceof RegExp)) {
@@ -253,19 +275,19 @@ export const unalias = (query, schema) => {
 
     /* if the translated query has a $ operator as its last element, we advance deeper into the schema */
     if (/\$[^.]*$/.test(newQuery)) {
-      parsed[newQuery] = unalias(item, pack.schema)
+      parsed[newQuery] = unaliasInner(item, pack.schema)
       return
     }
 
     /* if the translated query is a number, it means we're looking at an array */
-		if (!isNaN(newQuery) && !Object.keys(parsed).length) parsed = []
-		parsed[newQuery] = isNaN(newQuery) ? item : unalias(item, schema[0])
+		if (isArrayIndex(newQuery) && !Object.keys(parsed).length) parsed = []
+		parsed[newQuery] = !isArrayIndex(newQuery) ? item : unaliasInner(item, schema[0])
 
     /* skip standard JS objects, but for user defined objects we advance deeper.
      * RegExp is a leaf value (like Date/ObjectId): recursing into it would
      * iterate its (empty) own-property list and collapse it to {}. */
     if (item instanceof Object && !(item instanceof Date) && !(item instanceof BigInt) && !(item instanceof ObjectId) && !(item instanceof RegExp) && !((item instanceof Array) && (item.length === 0))) {
-      parsed[newQuery] = unalias(item, pack.schema)
+      parsed[newQuery] = unaliasInner(item, pack.schema)
       return
     }
 
@@ -275,6 +297,10 @@ export const unalias = (query, schema) => {
 
   return parsed
 }
+
+/* Public entry: clone first so the caller's query/update object is never mutated,
+ * then delegate to the recursive worker (which only ever touches the clone). */
+export const unalias = (query, schema) => unaliasInner(cloneQuery(query), schema)
 
 /**
  * formatResult Restore aliases from a findOne query
@@ -339,7 +365,7 @@ export function Model(schema: any, collection, options?: TOptions) {
   // @eslint-disable-next-line
   (schema as any)._u = { _alias: 'updatedAt' }
 
-  listeners.push(db => {
+  listeners.set(collection, db => {
     col = db.collection(collection)
     const na = []
     getMethods(col)
@@ -353,11 +379,26 @@ export function Model(schema: any, collection, options?: TOptions) {
     delayed.forEach(l => l(col))
   })
 
-  const wrapArray = cursor => {
-    const { toArray } = cursor
-    cursor.toArray = async () => {
-      const items = await toArray.bind(cursor)()
-      return items.map(formatResult(schema))
+  // Restore aliases on EVERY cursor consumption path, not just toArray().
+  // Previously forEach/next/async-iteration returned raw (short-key) docs.
+  // `.map()`/`.stream()` are intentionally left raw — they are explicit
+  // transforms where the caller opts into the native shape.
+  const wrapCursor = cursor => {
+    const fmt = formatResult(schema)
+    const { toArray, next, forEach } = cursor
+    cursor.toArray = async () => (await toArray.call(cursor)).map(fmt)
+    cursor.next = async () => {
+      const doc = await next.call(cursor)
+      return doc == null ? doc : fmt(doc)
+    }
+    if (typeof forEach === 'function') {
+      cursor.forEach = (cb: (doc: any) => void) => forEach.call(cursor, (doc: any) => cb(fmt(doc)))
+    }
+    const asyncIterator = cursor[Symbol.asyncIterator]
+    if (typeof asyncIterator === 'function') {
+      cursor[Symbol.asyncIterator] = async function* () {
+        for await (const doc of asyncIterator.call(cursor)) yield fmt(doc)
+      }
     }
     return cursor
   }
@@ -386,7 +427,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('FIND', '\x1b[33m', mongoFilter, '\x1b[0m')
       const cPromise = col.find(mongoFilter, options)
-      return raw ? cPromise : wrapArray(cPromise)
+      return raw ? cPromise : wrapCursor(cPromise)
     },
 
     findOne: function(filter?: any, options?: any, raw?: boolean) {
