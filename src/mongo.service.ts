@@ -92,9 +92,25 @@ export type TMongoAlias = {
  */
 export async function initMongo(uri, dbName, options?: any, customLogger?: any): Promise<TMongoAlias> {
   if (customLogger) logger = customLogger
+
+  // Idempotent: if a client already exists, reuse it instead of creating a second
+  // one (which would orphan the previous client's connection pool and monitoring
+  // sockets without closing them). Re-resolve `db` for the requested name and
+  // re-fire listeners so models rebind. To connect to a different server, call
+  // closeMongo() first.
+  if (mongoClient) {
+    db = mongoClient.db(dbName)
+    listeners.forEach(l => l(db))
+    return { mongoClient, db }
+  }
+
   mongoClient = new MongoClient(uri, options)
   if (options?.monitorCommands) startLogger(mongoClient)
-  db = await mongoClient.db(dbName)
+  // Explicitly connect so failures surface here (fail-fast) rather than on the
+  // first query, and so the log below is truthful. `.db()` is synchronous and
+  // does NOT connect on its own.
+  await mongoClient.connect()
+  db = mongoClient.db(dbName)
   logger.log('\x1b[36m MongoDB connected: \x1b[0m')
   listeners.forEach(l => l(db))
   return { mongoClient, db }
@@ -104,6 +120,10 @@ export async function closeMongo() {
   listeners.length = 0
   mongoClient?.removeAllListeners()
   await mongoClient?.close()
+  // Reset the client singleton so a subsequent initMongo() opens a fresh client
+  // rather than reusing the just-closed one via the idempotency guard. (`db` is
+  // left as-is; nothing reads it after close, and it is reassigned on re-init.)
+  mongoClient = undefined
 }
 
 export type TMongoPack = {
