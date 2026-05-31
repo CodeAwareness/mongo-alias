@@ -213,6 +213,13 @@ const cloneQuery = (v) => {
  * empty / decimal / whitespace keys were misread as array indexes. */
 const isArrayIndex = (key) => /^\d+$/.test(key)
 
+/* Only coerce a string to ObjectId when it's a 24-char hex string. We do NOT
+ * use ObjectId.isValid here: it also accepts 12-char strings (treated as raw
+ * bytes) and numbers, which would wrongly convert literal string _id values.
+ * Anything else is left as-is so it simply doesn't match (instead of throwing a
+ * raw BSONError). */
+const isObjectIdHex = (v) => typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v)
+
 const unaliasInner = (query, schema) => {
   let parsed = {}
   if (!query || !schema) return query
@@ -221,8 +228,8 @@ const unaliasInner = (query, schema) => {
   }
   if (!(query instanceof Object)) return query
 
-  /* Convenience transformer of string into ObjectId for _id */
-  if (query?._id && typeof query._id !== 'object') query._id = new ObjectId(query._id)
+  /* Convenience transformer of string into ObjectId for _id (24-hex only) */
+  if (query?._id && isObjectIdHex(query._id)) query._id = new ObjectId(query._id)
   
   /* Handle MongoDB operators with _id - ensure ObjectIds are preserved */
   if (query?._id && typeof query._id === 'object') {
@@ -232,7 +239,7 @@ const unaliasInner = (query, schema) => {
       if (query._id[op] && Array.isArray(query._id[op])) {
         query._id[op] = query._id[op].map(id => {
           if (id instanceof ObjectId) return id
-          if (typeof id === 'string') return new ObjectId(id)
+          if (isObjectIdHex(id)) return new ObjectId(id)
           return id
         })
       }
@@ -243,10 +250,10 @@ const unaliasInner = (query, schema) => {
     singleOps.forEach(op => {
       if (query._id[op] !== undefined) {
         const val = query._id[op]
-        if (typeof val === 'string') {
+        if (isObjectIdHex(val)) {
           query._id[op] = new ObjectId(val)
         }
-        // If already ObjectId, keep as is
+        // Non-24-hex strings and ObjectIds are kept as-is
       }
     })
   }
@@ -368,6 +375,15 @@ export function Model(schema: any, collection, options?: TOptions) {
   let col = db?.collection(collection) // TODO: something like db.collection<TSchema>(collection) should work but ... typescript
   const delayed = [];
 
+  // Models are often created at import time, before initMongo() has connected
+  // (col stays undefined until the connect listener fires). Calling a method in
+  // that window would otherwise throw a cryptic "Cannot read properties of
+  // undefined (reading 'find')"; this surfaces the real cause instead.
+  const requireCol = () => {
+    if (!col) throw new Error(`mongo-alias: collection "${collection}" used before a DB connection was established — call (and await) initMongo() before using models.`)
+    return col
+  };
+
   // @eslint-disable-next-line
   (schema as any)._c = { _alias: 'createdAt' };
   // @eslint-disable-next-line
@@ -416,32 +432,32 @@ export function Model(schema: any, collection, options?: TOptions) {
     countDocuments: function(filter?: any, options?: any) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('COUNT', '\x1b[33m', mongoFilter, '\x1b[0m')
-      return col.countDocuments(mongoFilter, options)
+      return requireCol().countDocuments(mongoFilter, options)
     },
 
     deleteOne: function(filter, options?: any) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('DELETE ONE', '\x1b[33m', mongoFilter, '\x1b[0m')
-      return col.deleteOne(mongoFilter, options)
+      return requireCol().deleteOne(mongoFilter, options)
     },
 
     deleteMany: function(filter, options?: any) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('DELETE MANY', '\x1b[33m', mongoFilter, '\x1b[0m')
-      return col.deleteMany(mongoFilter, options)
+      return requireCol().deleteMany(mongoFilter, options)
     },
 
     find: function(filter?: any, options?: any, raw?: boolean) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('FIND', '\x1b[33m', mongoFilter, '\x1b[0m')
-      const cPromise = col.find(mongoFilter, options)
+      const cPromise = requireCol().find(mongoFilter, options)
       return raw ? cPromise : wrapCursor(cPromise)
     },
 
     findOne: function(filter?: any, options?: any, raw?: boolean) {
       const mongoFilter = unalias(filter, schema)
       if (debug) logger.log('FIND ONE', debug, '\x1b[33m', mongoFilter, '\x1b[0m')
-      const docPromise = col.findOne(mongoFilter, options)
+      const docPromise = requireCol().findOne(mongoFilter, options)
       return raw ? docPromise : docPromise.then(formatResult(schema))
     },
 
@@ -453,7 +469,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoFilter = unalias(obj, schema)
       mongoFilter._c = new Date()
       if (debug) logger.log('INSERT ONE', obj, '\x1b[33m', mongoFilter, '\x1b[0m')
-      return col.insertOne(mongoFilter, options)
+      return requireCol().insertOne(mongoFilter, options)
     },
 
     insertMany: function(objArray, options?: any) {
@@ -462,7 +478,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       if (debug) logger.log('INSERT MANY', '\x1b[33m')
       if (debug) logger.dir(mongoFilter, { depth: null })
       if (debug) logger.log('\x1b[0m')
-      return col.insertMany(mongoFilter, options)
+      return requireCol().insertMany(mongoFilter, options)
     },
 
     replaceOne: function(filter: any, update: any, options?: any) {
@@ -470,7 +486,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoUpdate = unalias(update, schema)
       mongoUpdate._u = new Date()
       if (debug) logger.log('REPLACE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
-      return col.replaceOne(mongoFilter, mongoUpdate, options)
+      return requireCol().replaceOne(mongoFilter, mongoUpdate, options)
     },
 
     updateOne: function(filter: any, update: any, options?: any) {
@@ -479,7 +495,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
       if (debug) logger.log('UPDATE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
-      return col.updateOne(mongoFilter, mongoUpdate, options)
+      return requireCol().updateOne(mongoFilter, mongoUpdate, options)
     },
 
     updateMany: function(filter: any, update: any, options?: any) {
@@ -488,7 +504,7 @@ export function Model(schema: any, collection, options?: TOptions) {
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
       if (debug) logger.log('UPDATE MANY', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
-      return col.updateMany(mongoFilter, mongoUpdate, options)
+      return requireCol().updateMany(mongoFilter, mongoUpdate, options)
     },
   }
 
