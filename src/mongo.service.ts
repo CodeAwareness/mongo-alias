@@ -334,18 +334,26 @@ type TOptions = {
   debug: boolean
 }
 
-const getMethods = obj => {
-  let properties = new Set()
-  let currentObj = obj
-  do {
-    Object
-      .getOwnPropertyNames(currentObj)
-      .map(item => properties.add(item))
-  } while (
-    (currentObj = Object.getPrototypeOf(currentObj))
-  )
-
-  return [...properties.keys()].filter((item: string) => typeof obj[item] === 'function')
+/* Collect the native method names to passthrough-bind onto a Model.
+ *
+ * Scoped deliberately: we walk the instance and its prototype chain but STOP at
+ * Object.prototype, so we never bind hasOwnProperty/toString/valueOf/constructor/
+ * the legacy __define*__ accessors onto the model (which would clobber normal
+ * object semantics). We also read each property's DESCRIPTOR value rather than
+ * `obj[name]`, so accessor getters (namespace, collectionName, readConcern, ...)
+ * are never invoked during discovery. */
+const getMethods = (obj) => {
+  const methods = new Set<string>()
+  let current = obj
+  while (current && current !== Object.prototype) {
+    for (const name of Object.getOwnPropertyNames(current)) {
+      if (name === 'constructor' || methods.has(name)) continue
+      const desc = Object.getOwnPropertyDescriptor(current, name)
+      if (desc && typeof desc.value === 'function') methods.add(name)
+    }
+    current = Object.getPrototypeOf(current)
+  }
+  return [...methods]
 }
 
 /**
@@ -369,7 +377,7 @@ export function Model(schema: any, collection, options?: TOptions) {
     col = db.collection(collection)
     const na = []
     getMethods(col)
-      .map((k: string) => {
+      .forEach((k: string) => {
         if (!mAliased[k]) {
           na.push(k)
           mAliased[k] = col[k].bind(col)
