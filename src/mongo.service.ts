@@ -485,6 +485,16 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoFilter = unalias(filter, schema)
       const mongoUpdate = unalias(update, schema)
       mongoUpdate._u = new Date()
+      if (options?.upsert) {
+        // replaceOne can't carry $setOnInsert, so emulate the replace with an
+        // aggregation-pipeline update: $_c is missing on a fresh insert (-> now)
+        // and is the existing value on a real replace (-> preserved).
+        const pipeline = [
+          { $replaceWith: { $mergeObjects: [mongoUpdate, { _c: { $ifNull: ['$_c', new Date()] } }] } },
+        ]
+        if (debug) logger.log('REPLACE ONE (upsert)', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', pipeline, options || '', '\x1b[0m')
+        return requireCol().updateOne(mongoFilter, pipeline, options)
+      }
       if (debug) logger.log('REPLACE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return requireCol().replaceOne(mongoFilter, mongoUpdate, options)
     },
@@ -494,6 +504,10 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoUpdate = unalias(update, schema)
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
+      if (options?.upsert) {
+        if (mongoUpdate.$setOnInsert) mongoUpdate.$setOnInsert._c = new Date()
+        else mongoUpdate.$setOnInsert = { _c: new Date() }
+      }
       if (debug) logger.log('UPDATE ONE', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return requireCol().updateOne(mongoFilter, mongoUpdate, options)
     },
@@ -503,6 +517,10 @@ export function Model(schema: any, collection, options?: TOptions) {
       const mongoUpdate = unalias(update, schema)
       if (mongoUpdate.$set) mongoUpdate.$set._u = new Date()
       else mongoUpdate.$set = { _u: new Date() }
+      if (options?.upsert) {
+        if (mongoUpdate.$setOnInsert) mongoUpdate.$setOnInsert._c = new Date()
+        else mongoUpdate.$setOnInsert = { _c: new Date() }
+      }
       if (debug) logger.log('UPDATE MANY', '\x1b[33m', mongoFilter, '\x1b[0m\n', '\x1b[33m', mongoUpdate, options || '', '\x1b[0m')
       return requireCol().updateMany(mongoFilter, mongoUpdate, options)
     },
